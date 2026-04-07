@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const BACKEND_URL = process.env.BACKEND_URL;
 
 export async function POST(req: NextRequest) {
-  const { username } = await req.json();
+  const { username, maxId } = await req.json();
 
   if (!username) {
     return NextResponse.json(
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     const backendRes = await fetch(`${BACKEND_URL}/api/profile-posts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, max_posts: 12 }),
+      body: JSON.stringify({ username, max_posts: 12, max_id: maxId || "" }),
     });
 
     if (!backendRes.ok) {

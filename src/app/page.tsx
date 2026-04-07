@@ -57,6 +57,7 @@ export default function Home() {
   const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
+  const [nextMaxId, setNextMaxId] = useState<string | null>(null);
 
   // Load saved profiles from localStorage
   useEffect(() => {
@@ -97,11 +98,13 @@ export default function Home() {
     if (activeProfile === username && profilePosts.length > 0) {
       setActiveProfile(null);
       setProfilePosts([]);
+      setNextMaxId(null);
       return;
     }
 
     setActiveProfile(username);
     setProfilePosts([]);
+    setNextMaxId(null);
     setProfileError("");
     setProfileLoading(true);
 
@@ -120,8 +123,37 @@ export default function Home() {
       }
 
       setProfilePosts(data.posts || []);
+      setNextMaxId(data.nextMaxId || null);
     } catch {
       setProfileError("Erro de conexão ao buscar posts.");
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
+  async function loadMorePosts() {
+    if (!activeProfile || !nextMaxId || profileLoading) return;
+
+    setProfileLoading(true);
+
+    try {
+      const res = await fetch("/api/profile-posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: activeProfile, maxId: nextMaxId }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setProfileError(data.error || "Erro ao carregar mais posts.");
+        return;
+      }
+
+      setProfilePosts((prev) => [...prev, ...(data.posts || [])]);
+      setNextMaxId(data.nextMaxId || null);
+    } catch {
+      setProfileError("Erro de conexão ao carregar mais posts.");
     } finally {
       setProfileLoading(false);
     }
@@ -350,6 +382,16 @@ export default function Home() {
                 </button>
               ))}
             </div>
+          )}
+
+          {/* Carregar mais */}
+          {nextMaxId && !profileLoading && (
+            <button
+              onClick={loadMorePosts}
+              className="w-full rounded-lg border border-amber-500/30 bg-neutral-900 px-4 py-2.5 text-sm font-medium text-amber-400 transition-colors hover:bg-neutral-800"
+            >
+              CARREGAR MAIS
+            </button>
           )}
         </div>
 
