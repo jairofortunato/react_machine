@@ -587,6 +587,23 @@ export default function Home() {
                 >
                   {downloading ? "BAIXANDO VÍDEO..." : "BAIXAR VÍDEO ORIGINAL"}
                 </button>
+
+                <button
+                  onClick={() => {
+                    const blob = new Blob([script], { type: "text/plain" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = "roteiro.txt";
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="w-full rounded-lg border border-amber-500/30 bg-neutral-900 px-4 py-3 font-medium text-amber-400 transition-colors hover:bg-neutral-800"
+                >
+                  SALVAR ROTEIRO (.TXT)
+                </button>
               </div>
             )}
 
