@@ -260,8 +260,8 @@ export default function Home() {
             MÁQUINA DE REACTS
           </h1>
           <p className="text-white/60">
-            Cole um link de vídeo do Instagram, adicione suas instruções, e
-            receba um roteiro de reação.
+            Cole um link de vídeo (Instagram, YouTube, TikTok, X, Facebook),
+            adicione suas instruções, e receba um roteiro de reação.
           </p>
         </div>
 
@@ -418,12 +418,12 @@ export default function Home() {
               htmlFor="instagram-url"
               className="block text-sm font-medium text-white mb-1.5"
             >
-              LINK DO VÍDEO (INSTAGRAM)
+              LINK DO VÍDEO
             </label>
             <input
               id="instagram-url"
               type="url"
-              placeholder="https://www.instagram.com/reel/..."
+              placeholder="https://www.instagram.com/reel/... ou YouTube, TikTok, X, Facebook"
               className="w-full rounded-lg border border-amber-500/30 bg-neutral-900 px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
               value={instagramUrl}
               onChange={(e) => setInstagramUrl(e.target.value)}

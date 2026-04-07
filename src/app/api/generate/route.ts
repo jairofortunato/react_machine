@@ -17,9 +17,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!instagramUrl.includes("instagram.com")) {
+  if (!instagramUrl.startsWith("http")) {
     return NextResponse.json(
-      { error: "Por favor, insira um link válido do Instagram." },
+      { error: "Por favor, insira um link válido." },
       { status: 400 }
     );
   }
