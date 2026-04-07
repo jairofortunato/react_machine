@@ -42,6 +42,7 @@ export default function Home() {
   const [videoStats, setVideoStats] = useState<VideoStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [downloading, setDownloading] = useState(false);
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -247,6 +248,39 @@ export default function Home() {
       ]);
     } finally {
       setChatLoading(false);
+    }
+  }
+
+  async function handleDownloadVideo() {
+    if (!instagramUrl.trim() || downloading) return;
+    setDownloading(true);
+
+    try {
+      const res = await fetch("/api/download-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: instagramUrl }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setError(err.error || "Erro ao baixar vídeo.");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "video.mp4";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("Erro ao baixar vídeo.");
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -545,6 +579,14 @@ export default function Home() {
                 <div className="rounded-lg border border-amber-500/30 bg-neutral-900 p-5 whitespace-pre-wrap text-sm leading-relaxed text-white">
                   {script}
                 </div>
+
+                <button
+                  onClick={handleDownloadVideo}
+                  disabled={downloading}
+                  className="w-full rounded-lg border border-amber-500/30 bg-neutral-900 px-4 py-3 font-medium text-amber-400 transition-colors hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {downloading ? "BAIXANDO VÍDEO..." : "BAIXAR VÍDEO ORIGINAL"}
+                </button>
               </div>
             )}
 
