@@ -79,13 +79,14 @@ export async function POST(req: NextRequest) {
 
     const videoPath = path.join(tmpDir, videoFile);
 
-    // 2. Parse video metadata (likes, comments, date, etc.)
+    // 2. Parse video metadata (likes, comments, date, description, etc.)
     let videoStats: {
       likes: number | null;
       comments: number | null;
       shares: number | null;
       date: string | null;
-    } = { likes: null, comments: null, shares: null, date: null };
+      description: string | null;
+    } = { likes: null, comments: null, shares: null, date: null, description: null };
 
     if (infoFile) {
       const infoRaw = await fs.readFile(path.join(tmpDir, infoFile), "utf-8");
@@ -98,6 +99,7 @@ export async function POST(req: NextRequest) {
         date: rawDate
           ? `${rawDate.slice(6, 8)}/${rawDate.slice(4, 6)}/${rawDate.slice(0, 4)}`
           : null,
+        description: info.description ?? null,
       };
     }
 
@@ -191,7 +193,7 @@ ${instructions}
 
 TRANSCRIÇÃO DO VÍDEO ORIGINAL:
 ${transcript}
-${visualContext}
+${videoStats.description ? `\nDESCRIÇÃO DO VÍDEO ORIGINAL:\n${videoStats.description}\n` : ""}${visualContext}
 TAREFA:
 Com base na transcrição acima, nas instruções do criador${imageBlocks.length > 0 ? " e no contexto visual" : ""}, escreva um roteiro completo de um vídeo de reação de 1 minuto e 30 segundos (aproximadamente 250-300 palavras faladas).
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 
 interface VideoStats {
@@ -8,6 +8,17 @@ interface VideoStats {
   comments: number | null;
   shares: number | null;
   date: string | null;
+  description: string | null;
+}
+
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+interface EditHistory {
+  prompt: string;
+  result: string;
 }
 
 export default function Home() {
@@ -20,6 +31,17 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Chat state
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [editHistory, setEditHistory] = useState<EditHistory[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
+
   async function handleGenerate() {
     if (!instructions.trim() || !instagramUrl.trim()) {
       setError("Preencha as instruções e o link do Instagram.");
@@ -31,6 +53,8 @@ export default function Home() {
     setTranscript("");
     setFrameImage(null);
     setVideoStats(null);
+    setChatMessages([]);
+    setEditHistory([]);
     setLoading(true);
 
     try {
@@ -58,14 +82,63 @@ export default function Home() {
     }
   }
 
+  async function handleChatSend() {
+    const prompt = chatInput.trim();
+    if (!prompt || chatLoading) return;
+
+    setChatInput("");
+    setChatMessages((prev) => [...prev, { role: "user", content: prompt }]);
+    setChatLoading(true);
+
+    try {
+      const res = await fetch("/api/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          script,
+          transcript,
+          instructions,
+          prompt,
+          history: editHistory,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setChatMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: data.error || "Erro ao editar." },
+        ]);
+        return;
+      }
+
+      setScript(data.script);
+      setEditHistory((prev) => [...prev, { prompt, result: data.script }]);
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Roteiro atualizado!" },
+      ]);
+    } catch {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Erro de conexão. Tente novamente." },
+      ]);
+    } finally {
+      setChatLoading(false);
+    }
+  }
+
   const hasResults = script || transcript || frameImage;
 
   return (
     <main className="flex-1 flex items-center justify-center p-6">
       <div className="w-full max-w-4xl space-y-8">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight">React Machine</h1>
-          <p className="text-zinc-400">
+          <h1 className="text-3xl font-bold tracking-tight text-amber-400 uppercase">
+            MÁQUINA DE REACTS
+          </h1>
+          <p className="text-white/60">
             Cole um link de vídeo do Instagram, adicione suas instruções, e
             receba um roteiro de reação.
           </p>
@@ -75,15 +148,15 @@ export default function Home() {
           <div>
             <label
               htmlFor="instructions"
-              className="block text-sm font-medium text-zinc-300 mb-1.5"
+              className="block text-sm font-medium text-white mb-1.5"
             >
-              Contexto e Instruções
+              CONTEXTO E INSTRUÇÕES
             </label>
             <textarea
               id="instructions"
               rows={6}
               placeholder="Ex: Sou um criador de conteúdo sobre finanças pessoais. Quero reagir a esse vídeo com tom descontraído e educativo..."
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent resize-y"
+              className="w-full rounded-lg border border-amber-500/30 bg-neutral-900 px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent resize-y"
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
             />
@@ -92,15 +165,15 @@ export default function Home() {
           <div>
             <label
               htmlFor="instagram-url"
-              className="block text-sm font-medium text-zinc-300 mb-1.5"
+              className="block text-sm font-medium text-white mb-1.5"
             >
-              Link do Vídeo (Instagram)
+              LINK DO VÍDEO (INSTAGRAM)
             </label>
             <input
               id="instagram-url"
               type="url"
               placeholder="https://www.instagram.com/reel/..."
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+              className="w-full rounded-lg border border-amber-500/30 bg-neutral-900 px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
               value={instagramUrl}
               onChange={(e) => setInstagramUrl(e.target.value)}
             />
@@ -111,9 +184,9 @@ export default function Home() {
           <button
             onClick={handleGenerate}
             disabled={loading}
-            className="w-full rounded-lg bg-violet-600 px-4 py-3 font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full rounded-lg bg-amber-500 px-4 py-3 font-medium text-black transition-colors hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Gerando roteiro..." : "Gerar Roteiro"}
+            {loading ? "GERANDO ROTEIRO..." : "GERAR ROTEIRO"}
           </button>
         </div>
 
@@ -124,66 +197,77 @@ export default function Home() {
               <div className="flex gap-6 items-start">
                 {frameImage && (
                   <div className="shrink-0">
-                    <h2 className="text-lg font-semibold text-zinc-200 mb-2">
-                      Frame do Vídeo
+                    <h2 className="text-lg font-semibold text-amber-400 mb-2">
+                      FRAME DO VÍDEO
                     </h2>
                     <Image
                       src={`data:image/jpeg;base64,${frameImage}`}
                       alt="Frame do início do vídeo"
                       width={320}
                       height={568}
-                      className="rounded-lg border border-zinc-700 object-cover"
+                      className="rounded-lg border border-amber-500/30 object-cover"
                     />
                   </div>
                 )}
 
                 {videoStats && (
                   <div className="flex-1 space-y-3">
-                    <h2 className="text-lg font-semibold text-zinc-200">
-                      Dados do Vídeo
+                    <h2 className="text-lg font-semibold text-amber-400">
+                      DADOS DO VÍDEO
                     </h2>
                     <div className="grid grid-cols-2 gap-3">
                       {videoStats.date && (
-                        <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-4">
-                          <p className="text-xs text-zinc-500 uppercase tracking-wide">
+                        <div className="rounded-lg border border-amber-500/30 bg-neutral-900 p-4">
+                          <p className="text-xs text-amber-400/50 uppercase tracking-wide">
                             Data
                           </p>
-                          <p className="text-lg font-semibold text-zinc-100 mt-1">
+                          <p className="text-lg font-semibold text-white mt-1">
                             {videoStats.date}
                           </p>
                         </div>
                       )}
                       {videoStats.likes !== null && (
-                        <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-4">
-                          <p className="text-xs text-zinc-500 uppercase tracking-wide">
+                        <div className="rounded-lg border border-amber-500/30 bg-neutral-900 p-4">
+                          <p className="text-xs text-amber-400/50 uppercase tracking-wide">
                             Curtidas
                           </p>
-                          <p className="text-lg font-semibold text-zinc-100 mt-1">
+                          <p className="text-lg font-semibold text-white mt-1">
                             {videoStats.likes.toLocaleString("pt-BR")}
                           </p>
                         </div>
                       )}
                       {videoStats.comments !== null && (
-                        <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-4">
-                          <p className="text-xs text-zinc-500 uppercase tracking-wide">
+                        <div className="rounded-lg border border-amber-500/30 bg-neutral-900 p-4">
+                          <p className="text-xs text-amber-400/50 uppercase tracking-wide">
                             Comentários
                           </p>
-                          <p className="text-lg font-semibold text-zinc-100 mt-1">
+                          <p className="text-lg font-semibold text-white mt-1">
                             {videoStats.comments.toLocaleString("pt-BR")}
                           </p>
                         </div>
                       )}
                       {videoStats.shares !== null && (
-                        <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-4">
-                          <p className="text-xs text-zinc-500 uppercase tracking-wide">
+                        <div className="rounded-lg border border-amber-500/30 bg-neutral-900 p-4">
+                          <p className="text-xs text-amber-400/50 uppercase tracking-wide">
                             Enviados
                           </p>
-                          <p className="text-lg font-semibold text-zinc-100 mt-1">
+                          <p className="text-lg font-semibold text-white mt-1">
                             {videoStats.shares.toLocaleString("pt-BR")}
                           </p>
                         </div>
                       )}
                     </div>
+
+                    {videoStats.description && (
+                      <div className="rounded-lg border border-amber-500/30 bg-neutral-900 p-4">
+                        <p className="text-xs text-amber-400/50 uppercase tracking-wide">
+                          DESCRIÇÃO
+                        </p>
+                        <p className="text-sm text-white/80 mt-1 whitespace-pre-wrap">
+                          {videoStats.description}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -192,10 +276,10 @@ export default function Home() {
             {/* Transcrição */}
             {transcript && (
               <div className="space-y-2">
-                <h2 className="text-lg font-semibold text-zinc-200">
-                  Transcrição
+                <h2 className="text-lg font-semibold text-amber-400">
+                  TRANSCRIÇÃO
                 </h2>
-                <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-5 whitespace-pre-wrap text-sm leading-relaxed text-zinc-400">
+                <div className="rounded-lg border border-amber-500/30 bg-neutral-900 p-5 whitespace-pre-wrap text-sm leading-relaxed text-white/70">
                   {transcript}
                 </div>
               </div>
@@ -204,11 +288,75 @@ export default function Home() {
             {/* Roteiro */}
             {script && (
               <div className="space-y-2">
-                <h2 className="text-lg font-semibold text-zinc-200">
-                  Roteiro Gerado
+                <h2 className="text-lg font-semibold text-amber-400">
+                  ROTEIRO GERADO
                 </h2>
-                <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-5 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">
+                <div className="rounded-lg border border-amber-500/30 bg-neutral-900 p-5 whitespace-pre-wrap text-sm leading-relaxed text-white">
                   {script}
+                </div>
+              </div>
+            )}
+
+            {/* Chat para editar roteiro */}
+            {script && (
+              <div className="space-y-3">
+                <h2 className="text-lg font-semibold text-amber-400">
+                  EDITAR ROTEIRO
+                </h2>
+
+                {/* Mensagens do chat */}
+                {chatMessages.length > 0 && (
+                  <div className="rounded-lg border border-amber-500/30 bg-neutral-900 p-4 max-h-60 overflow-y-auto space-y-3">
+                    {chatMessages.map((msg, i) => (
+                      <div
+                        key={i}
+                        className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                      >
+                        <div
+                          className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                            msg.role === "user"
+                              ? "bg-amber-500 text-black"
+                              : "bg-neutral-800 text-white"
+                          }`}
+                        >
+                          {msg.content}
+                        </div>
+                      </div>
+                    ))}
+                    {chatLoading && (
+                      <div className="flex justify-start">
+                        <div className="bg-neutral-800 text-amber-400/60 rounded-lg px-3 py-2 text-sm">
+                          Editando...
+                        </div>
+                      </div>
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+                )}
+
+                {/* Input do chat */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Ex: Mude o gancho inicial para algo mais provocativo..."
+                    className="flex-1 rounded-lg border border-amber-500/30 bg-neutral-900 px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleChatSend();
+                      }
+                    }}
+                    disabled={chatLoading}
+                  />
+                  <button
+                    onClick={handleChatSend}
+                    disabled={chatLoading || !chatInput.trim()}
+                    className="rounded-lg bg-amber-500 px-5 py-3 font-medium text-black transition-colors hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                  >
+                    ENVIAR
+                  </button>
                 </div>
               </div>
             )}

@@ -8,7 +8,7 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "React Machine",
+  title: "MÁQUINA DE REACTS",
   description: "Gere roteiros de vídeo reagindo a conteúdo do Instagram",
 };
 
@@ -19,7 +19,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className={`${geistSans.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100 font-sans">
+      <body className="min-h-full flex flex-col bg-black text-white font-sans">
         {children}
       </body>
     </html>
