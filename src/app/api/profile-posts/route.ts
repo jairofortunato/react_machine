@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { humanizeError } from "@/lib/errors";
 
 const BACKEND_URL = process.env.BACKEND_URL;
 
@@ -31,10 +32,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data);
   } catch (err: unknown) {
     console.error("Profile posts error:", err);
-    const errorMessage =
-      err instanceof Error ? err.message : "Erro desconhecido";
     return NextResponse.json(
-      { error: `Erro ao buscar posts: ${errorMessage}` },
+      { error: humanizeError(err) },
       { status: 500 }
     );
   }

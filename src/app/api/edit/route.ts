@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { humanizeError } from "@/lib/errors";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -64,10 +65,8 @@ A partir de agora, o criador vai te pedir ajustes no roteiro. Sempre retorne o r
     return NextResponse.json({ script: updatedScript });
   } catch (err: unknown) {
     console.error("Edit error:", err);
-    const errorMessage =
-      err instanceof Error ? err.message : "Erro desconhecido";
     return NextResponse.json(
-      { error: `Erro ao editar: ${errorMessage}` },
+      { error: humanizeError(err) },
       { status: 500 }
     );
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { humanizeError } from "@/lib/errors";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -131,10 +132,8 @@ Escreva APENAS o roteiro, sem explicações adicionais.`,
     });
   } catch (err: unknown) {
     console.error("Error:", err);
-    const errorMessage =
-      err instanceof Error ? err.message : "Erro desconhecido";
     return NextResponse.json(
-      { error: `Erro ao processar: ${errorMessage}` },
+      { error: humanizeError(err) },
       { status: 500 }
     );
   }
