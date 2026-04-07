@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Image from "next/image";
 
 interface VideoStats {
@@ -33,6 +33,74 @@ interface ProfilePost {
   date: string | null;
 }
 
+// Spinner component
+function Spinner({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
+  const sizeClasses = {
+    sm: "h-4 w-4 border-2",
+    md: "h-6 w-6 border-2",
+    lg: "h-10 w-10 border-3",
+  };
+  return (
+    <div
+      className={`${sizeClasses[size]} border-amber-400 border-t-transparent rounded-full animate-spin`}
+    />
+  );
+}
+
+// Loading overlay for generate
+function GenerateLoading() {
+  const steps = [
+    "BAIXANDO VÍDEO...",
+    "EXTRAINDO ÁUDIO...",
+    "TRANSCREVENDO...",
+    "GERANDO ROTEIRO COM IA...",
+  ];
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStep((s) => (s < steps.length - 1 ? s + 1 : s));
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [steps.length]);
+
+  return (
+    <div className="flex flex-col items-center gap-4 py-12">
+      <Spinner size="lg" />
+      <p className="text-amber-400 font-medium animate-pulse">{steps[step]}</p>
+      <div className="flex gap-1.5 mt-2">
+        {steps.map((_, i) => (
+          <div
+            key={i}
+            className={`h-1.5 w-8 rounded-full transition-colors duration-500 ${
+              i <= step ? "bg-amber-500" : "bg-neutral-800"
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Success banner
+function SuccessBanner({ onDismiss }: { onDismiss: () => void }) {
+  useEffect(() => {
+    const timer = setTimeout(onDismiss, 4000);
+    return () => clearTimeout(timer);
+  }, [onDismiss]);
+
+  return (
+    <div className="rounded-lg border border-amber-500 bg-amber-500/10 p-4 text-center animate-fade-in">
+      <p className="text-2xl font-bold text-amber-400">
+        ROTEIRO PRONTO!
+      </p>
+      <p className="text-white/60 text-sm mt-1">
+        Seu roteiro foi gerado com sucesso. Agora é só gravar!
+      </p>
+    </div>
+  );
+}
+
 export default function Home() {
   const [instructions, setInstructions] = useState("");
   const [instagramUrl, setInstagramUrl] = useState("");
@@ -43,6 +111,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -50,6 +119,7 @@ export default function Home() {
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const scriptRef = useRef<HTMLDivElement>(null);
 
   // Profile explorer state
   const [profileInput, setProfileInput] = useState("");
@@ -71,6 +141,15 @@ export default function Home() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
+
+  // Scroll to script when it appears
+  useEffect(() => {
+    if (script && scriptRef.current) {
+      setTimeout(() => {
+        scriptRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+    }
+  }, [script]);
 
   function addProfile() {
     const username = profileInput.trim().replace("@", "");
@@ -108,7 +187,6 @@ export default function Home() {
   }
 
   async function loadProfilePosts(username: string) {
-
     setActiveProfile(username);
     setProfilePosts([]);
     setNextMaxId(null);
@@ -172,7 +250,7 @@ export default function Home() {
 
   async function handleGenerate() {
     if (!instructions.trim() || !instagramUrl.trim()) {
-      setError("Preencha as instruções e o link do Instagram.");
+      setError("Preencha as instruções e o link do vídeo.");
       return;
     }
 
@@ -183,6 +261,7 @@ export default function Home() {
     setVideoStats(null);
     setChatMessages([]);
     setEditHistory([]);
+    setShowSuccess(false);
     setLoading(true);
 
     try {
@@ -203,6 +282,7 @@ export default function Home() {
       setTranscript(data.transcript || "");
       setFrameImage(data.frameImage || null);
       setVideoStats(data.videoStats || null);
+      setShowSuccess(true);
     } catch {
       setError("Erro de conexão. Tente novamente.");
     } finally {
@@ -290,6 +370,8 @@ export default function Home() {
     }
   }
 
+  const dismissSuccess = useCallback(() => setShowSuccess(false), []);
+
   const hasResults = script || transcript || frameImage;
 
   return (
@@ -361,11 +443,14 @@ export default function Home() {
             </div>
           )}
 
-          {/* Loading / Error */}
+          {/* Loading perfil */}
           {profileLoading && (
-            <p className="text-amber-400/60 text-sm">
-              Buscando posts de @{activeProfile}...
-            </p>
+            <div className="flex items-center gap-3 py-4">
+              <Spinner size="sm" />
+              <p className="text-amber-400/60 text-sm">
+                Buscando posts de @{activeProfile}...
+              </p>
+            </div>
           )}
           {profileError && (
             <p className="text-red-400 text-sm">{profileError}</p>
@@ -477,12 +562,25 @@ export default function Home() {
             disabled={loading}
             className="w-full rounded-lg bg-amber-500 px-4 py-3 font-medium text-black transition-colors hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "GERANDO ROTEIRO..." : "GERAR ROTEIRO"}
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <Spinner size="sm" />
+                GERANDO ROTEIRO...
+              </span>
+            ) : (
+              "GERAR ROTEIRO"
+            )}
           </button>
         </div>
 
+        {/* Loading state */}
+        {loading && <GenerateLoading />}
+
         {hasResults && (
           <div className="space-y-6">
+            {/* Success banner */}
+            {showSuccess && <SuccessBanner onDismiss={dismissSuccess} />}
+
             {/* Frame + Stats */}
             {(frameImage || videoStats) && (
               <div className="flex flex-col sm:flex-row gap-6 items-start">
@@ -578,7 +676,7 @@ export default function Home() {
 
             {/* Roteiro */}
             {script && (
-              <div className="space-y-2">
+              <div ref={scriptRef} className="space-y-2">
                 <h2 className="text-lg font-semibold text-amber-400">
                   ROTEIRO GERADO
                 </h2>
@@ -586,30 +684,39 @@ export default function Home() {
                   {script}
                 </div>
 
-                <button
-                  onClick={handleDownloadVideo}
-                  disabled={downloading}
-                  className="w-full rounded-lg border border-amber-500/30 bg-neutral-900 px-4 py-3 font-medium text-amber-400 transition-colors hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {downloading ? "BAIXANDO VÍDEO..." : "BAIXAR VÍDEO ORIGINAL"}
-                </button>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    onClick={handleDownloadVideo}
+                    disabled={downloading}
+                    className="flex-1 rounded-lg border border-amber-500/30 bg-neutral-900 px-4 py-3 font-medium text-amber-400 transition-colors hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {downloading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Spinner size="sm" />
+                        BAIXANDO...
+                      </span>
+                    ) : (
+                      "BAIXAR VÍDEO ORIGINAL"
+                    )}
+                  </button>
 
-                <button
-                  onClick={() => {
-                    const blob = new Blob([script], { type: "text/plain" });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = "roteiro.txt";
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                  }}
-                  className="w-full rounded-lg border border-amber-500/30 bg-neutral-900 px-4 py-3 font-medium text-amber-400 transition-colors hover:bg-neutral-800"
-                >
-                  SALVAR ROTEIRO (.TXT)
-                </button>
+                  <button
+                    onClick={() => {
+                      const blob = new Blob([script], { type: "text/plain" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = "roteiro.txt";
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                    }}
+                    className="flex-1 rounded-lg border border-amber-500/30 bg-neutral-900 px-4 py-3 font-medium text-amber-400 transition-colors hover:bg-neutral-800"
+                  >
+                    SALVAR ROTEIRO (.TXT)
+                  </button>
+                </div>
               </div>
             )}
 
@@ -640,10 +747,11 @@ export default function Home() {
                       </div>
                     ))}
                     {chatLoading && (
-                      <div className="flex justify-start">
-                        <div className="bg-neutral-800 text-amber-400/60 rounded-lg px-3 py-2 text-sm">
-                          Editando...
-                        </div>
+                      <div className="flex items-center gap-2">
+                        <Spinner size="sm" />
+                        <span className="text-amber-400/60 text-sm">
+                          Editando roteiro...
+                        </span>
                       </div>
                     )}
                     <div ref={chatEndRef} />
