@@ -21,6 +21,18 @@ interface EditHistory {
   result: string;
 }
 
+interface ProfilePost {
+  id: string;
+  url: string;
+  title: string;
+  description: string;
+  thumbnail: string | null;
+  likes: number | null;
+  comments: number | null;
+  views: number | null;
+  date: string | null;
+}
+
 export default function Home() {
   const [instructions, setInstructions] = useState("");
   const [instagramUrl, setInstagramUrl] = useState("");
@@ -38,9 +50,86 @@ export default function Home() {
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Profile explorer state
+  const [profileInput, setProfileInput] = useState("");
+  const [savedProfiles, setSavedProfiles] = useState<string[]>([]);
+  const [activeProfile, setActiveProfile] = useState<string | null>(null);
+  const [profilePosts, setProfilePosts] = useState<ProfilePost[]>([]);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState("");
+
+  // Load saved profiles from localStorage
+  useEffect(() => {
+    const stored = localStorage.getItem("react-machine-profiles");
+    if (stored) {
+      setSavedProfiles(JSON.parse(stored));
+    }
+  }, []);
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
+
+  function addProfile() {
+    const username = profileInput.trim().replace("@", "");
+    if (!username) return;
+    if (savedProfiles.includes(username)) {
+      setProfileInput("");
+      return;
+    }
+    const updated = [...savedProfiles, username];
+    setSavedProfiles(updated);
+    localStorage.setItem("react-machine-profiles", JSON.stringify(updated));
+    setProfileInput("");
+  }
+
+  function removeProfile(username: string) {
+    const updated = savedProfiles.filter((p) => p !== username);
+    setSavedProfiles(updated);
+    localStorage.setItem("react-machine-profiles", JSON.stringify(updated));
+    if (activeProfile === username) {
+      setActiveProfile(null);
+      setProfilePosts([]);
+    }
+  }
+
+  async function loadProfilePosts(username: string) {
+    if (activeProfile === username && profilePosts.length > 0) {
+      setActiveProfile(null);
+      setProfilePosts([]);
+      return;
+    }
+
+    setActiveProfile(username);
+    setProfilePosts([]);
+    setProfileError("");
+    setProfileLoading(true);
+
+    try {
+      const res = await fetch("/api/profile-posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setProfileError(data.error || "Erro ao buscar posts.");
+        return;
+      }
+
+      setProfilePosts(data.posts || []);
+    } catch {
+      setProfileError("Erro de conexão ao buscar posts.");
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
+  function selectPost(post: ProfilePost) {
+    setInstagramUrl(post.url);
+  }
 
   async function handleGenerate() {
     if (!instructions.trim() || !instagramUrl.trim()) {
@@ -144,6 +233,126 @@ export default function Home() {
           </p>
         </div>
 
+        {/* Explorar Perfis */}
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold text-amber-400">
+            EXPLORAR PERFIS
+          </h2>
+
+          {/* Adicionar perfil */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="@usuario"
+              className="flex-1 rounded-lg border border-amber-500/30 bg-neutral-900 px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              value={profileInput}
+              onChange={(e) => setProfileInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addProfile();
+                }
+              }}
+            />
+            <button
+              onClick={addProfile}
+              className="rounded-lg bg-amber-500 px-4 py-2.5 font-medium text-black transition-colors hover:bg-amber-400 shrink-0"
+            >
+              ADICIONAR
+            </button>
+          </div>
+
+          {/* Lista de perfis salvos */}
+          {savedProfiles.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {savedProfiles.map((username) => (
+                <div key={username} className="flex items-center gap-1">
+                  <button
+                    onClick={() => loadProfilePosts(username)}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                      activeProfile === username
+                        ? "bg-amber-500 text-black"
+                        : "bg-neutral-800 text-white hover:bg-neutral-700"
+                    }`}
+                  >
+                    @{username}
+                  </button>
+                  <button
+                    onClick={() => removeProfile(username)}
+                    className="text-white/30 hover:text-red-400 text-sm px-1 transition-colors"
+                    title="Remover perfil"
+                  >
+                    x
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Loading / Error */}
+          {profileLoading && (
+            <p className="text-amber-400/60 text-sm">
+              Buscando posts de @{activeProfile}...
+            </p>
+          )}
+          {profileError && (
+            <p className="text-red-400 text-sm">{profileError}</p>
+          )}
+
+          {/* Grid de posts */}
+          {profilePosts.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {profilePosts.map((post) => (
+                <button
+                  key={post.id}
+                  onClick={() => selectPost(post)}
+                  className={`rounded-lg border overflow-hidden text-left transition-all hover:scale-[1.02] ${
+                    instagramUrl === post.url
+                      ? "border-amber-500 ring-2 ring-amber-500"
+                      : "border-amber-500/20 hover:border-amber-500/50"
+                  }`}
+                >
+                  {post.thumbnail ? (
+                    <div className="relative aspect-square bg-neutral-800">
+                      <Image
+                        src={post.thumbnail}
+                        alt={post.description || "Post"}
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
+                    </div>
+                  ) : (
+                    <div className="aspect-square bg-neutral-800 flex items-center justify-center">
+                      <span className="text-white/20 text-xs">SEM THUMB</span>
+                    </div>
+                  )}
+                  <div className="p-2 bg-neutral-900 space-y-1">
+                    {post.date && (
+                      <p className="text-[10px] text-amber-400/50">
+                        {post.date}
+                      </p>
+                    )}
+                    <div className="flex gap-2 text-[10px] text-white/50">
+                      {post.likes !== null && (
+                        <span>{post.likes.toLocaleString("pt-BR")} curtidas</span>
+                      )}
+                      {post.comments !== null && (
+                        <span>{post.comments.toLocaleString("pt-BR")} coment.</span>
+                      )}
+                    </div>
+                    {post.description && (
+                      <p className="text-[11px] text-white/40 line-clamp-2">
+                        {post.description}
+                      </p>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="space-y-4">
           <div>
             <label
@@ -194,7 +403,7 @@ export default function Home() {
           <div className="space-y-6">
             {/* Frame + Stats */}
             {(frameImage || videoStats) && (
-              <div className="flex gap-6 items-start">
+              <div className="flex flex-col sm:flex-row gap-6 items-start">
                 {frameImage && (
                   <div className="shrink-0">
                     <h2 className="text-lg font-semibold text-amber-400 mb-2">
