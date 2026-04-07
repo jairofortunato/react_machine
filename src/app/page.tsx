@@ -31,6 +31,7 @@ interface ProfilePost {
   comments: number | null;
   views: number | null;
   date: string | null;
+  media_type?: string;
 }
 
 // Spinner component
@@ -48,13 +49,10 @@ function Spinner({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
 }
 
 // Loading overlay for generate
-function GenerateLoading() {
-  const steps = [
-    "BAIXANDO VÍDEO...",
-    "EXTRAINDO ÁUDIO...",
-    "TRANSCREVENDO...",
-    "GERANDO ROTEIRO COM IA...",
-  ];
+function GenerateLoading({ isImage = false }: { isImage?: boolean }) {
+  const steps = isImage
+    ? ["PROCESSANDO IMAGEM...", "ANALISANDO CONTEÚDO...", "GERANDO ROTEIRO COM IA..."]
+    : ["BAIXANDO VÍDEO...", "EXTRAINDO ÁUDIO...", "TRANSCREVENDO...", "GERANDO ROTEIRO COM IA..."];
   const [step, setStep] = useState(0);
 
   useEffect(() => {
@@ -129,6 +127,8 @@ export default function Home() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [nextMaxId, setNextMaxId] = useState<string | null>(null);
+  const [selectedPost, setSelectedPost] = useState<ProfilePost | null>(null);
+  const [isImageMode, setIsImageMode] = useState(false);
 
   // Load saved profiles from localStorage
   useEffect(() => {
@@ -246,14 +246,17 @@ export default function Home() {
 
   function selectPost(post: ProfilePost) {
     setInstagramUrl(post.url);
+    setSelectedPost(post);
   }
 
   async function handleGenerate() {
     if (!instructions.trim() || !instagramUrl.trim()) {
-      setError("Preencha as instruções e o link do vídeo.");
+      setError("Preencha as instruções e o link do conteúdo.");
       return;
     }
 
+    const isImage = selectedPost?.media_type === "image" || selectedPost?.media_type === "carousel";
+    setIsImageMode(isImage);
     setError("");
     setScript("");
     setTranscript("");
@@ -265,10 +268,22 @@ export default function Home() {
     setLoading(true);
 
     try {
+      const body: Record<string, unknown> = { instructions, instagramUrl };
+      if (isImage && selectedPost) {
+        body.mediaType = "image";
+        body.thumbnailUrl = selectedPost.thumbnail;
+        body.postDescription = selectedPost.description;
+        body.postStats = {
+          likes: selectedPost.likes,
+          comments: selectedPost.comments,
+          date: selectedPost.date,
+        };
+      }
+
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instructions, instagramUrl }),
+        body: JSON.stringify(body),
       });
 
       const data = await res.json();
@@ -370,6 +385,16 @@ export default function Home() {
     }
   }
 
+  function handleDownloadImage() {
+    if (!frameImage) return;
+    const a = document.createElement("a");
+    a.href = `data:image/jpeg;base64,${frameImage}`;
+    a.download = "imagem.jpg";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
   const dismissSuccess = useCallback(() => setShowSuccess(false), []);
 
   const hasResults = script || transcript || frameImage;
@@ -382,7 +407,7 @@ export default function Home() {
             MÁQUINA DE REACTS
           </h1>
           <p className="text-white/60">
-            Cole um link de vídeo (Instagram, YouTube, TikTok, X, Facebook),
+            Cole um link de vídeo ou imagem (Instagram, YouTube, TikTok, X, Facebook),
             adicione suas instruções, e receba um roteiro de reação.
           </p>
         </div>
@@ -478,6 +503,11 @@ export default function Home() {
                         className="object-cover"
                         unoptimized
                       />
+                      {post.media_type && post.media_type !== "video" && (
+                        <span className="absolute top-1 right-1 bg-black/70 text-[9px] text-amber-400 px-1.5 py-0.5 rounded font-medium uppercase">
+                          {post.media_type === "carousel" ? "CARROSSEL" : "FOTO"}
+                        </span>
+                      )}
                     </div>
                   ) : (
                     <div className="aspect-square bg-neutral-800 flex items-center justify-center">
@@ -543,15 +573,15 @@ export default function Home() {
               htmlFor="instagram-url"
               className="block text-sm font-medium text-white mb-1.5"
             >
-              LINK DO VÍDEO
+              LINK DO CONTEÚDO
             </label>
             <input
               id="instagram-url"
               type="url"
-              placeholder="https://www.instagram.com/reel/... ou YouTube, TikTok, X, Facebook"
+              placeholder="https://www.instagram.com/p/... ou /reel/..., YouTube, TikTok, X, Facebook"
               className="w-full rounded-lg border border-amber-500/30 bg-neutral-900 px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
               value={instagramUrl}
-              onChange={(e) => setInstagramUrl(e.target.value)}
+              onChange={(e) => { setInstagramUrl(e.target.value); setSelectedPost(null); }}
             />
           </div>
 
@@ -574,7 +604,7 @@ export default function Home() {
         </div>
 
         {/* Loading state */}
-        {loading && <GenerateLoading />}
+        {loading && <GenerateLoading isImage={isImageMode} />}
 
         {hasResults && (
           <div className="space-y-6">
@@ -587,7 +617,7 @@ export default function Home() {
                 {frameImage && (
                   <div className="shrink-0">
                     <h2 className="text-lg font-semibold text-amber-400 mb-2">
-                      FRAME DO VÍDEO
+                      {isImageMode ? "IMAGEM DO POST" : "FRAME DO VÍDEO"}
                     </h2>
                     <Image
                       src={`data:image/jpeg;base64,${frameImage}`}
@@ -602,7 +632,7 @@ export default function Home() {
                 {videoStats && (
                   <div className="flex-1 space-y-3">
                     <h2 className="text-lg font-semibold text-amber-400">
-                      DADOS DO VÍDEO
+                      {isImageMode ? "DADOS DO POST" : "DADOS DO VÍDEO"}
                     </h2>
                     <div className="grid grid-cols-2 gap-3">
                       {videoStats.date && (
@@ -680,13 +710,16 @@ export default function Home() {
                 <h2 className="text-lg font-semibold text-amber-400">
                   ROTEIRO GERADO
                 </h2>
-                <div className="rounded-lg border border-amber-500/30 bg-neutral-900 p-5 whitespace-pre-wrap text-sm leading-relaxed text-white">
-                  {script}
-                </div>
+                <textarea
+                  className="w-full rounded-lg border border-amber-500/30 bg-neutral-900 p-5 text-sm leading-relaxed text-white resize-y focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent min-h-[200px]"
+                  value={script}
+                  onChange={(e) => setScript(e.target.value)}
+                  rows={12}
+                />
 
                 <div className="flex flex-col sm:flex-row gap-2">
                   <button
-                    onClick={handleDownloadVideo}
+                    onClick={isImageMode ? handleDownloadImage : handleDownloadVideo}
                     disabled={downloading}
                     className="flex-1 rounded-lg border border-amber-500/30 bg-neutral-900 px-4 py-3 font-medium text-amber-400 transition-colors hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -696,7 +729,7 @@ export default function Home() {
                         BAIXANDO...
                       </span>
                     ) : (
-                      "BAIXAR VÍDEO ORIGINAL"
+                      isImageMode ? "BAIXAR IMAGEM ORIGINAL" : "BAIXAR VÍDEO ORIGINAL"
                     )}
                   </button>
 
