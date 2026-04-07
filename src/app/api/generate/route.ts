@@ -1,31 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { execFile } from "child_process";
-import { promisify } from "util";
-import fs from "fs/promises";
-import path from "path";
-import os from "os";
 import Anthropic from "@anthropic-ai/sdk";
-import OpenAI from "openai";
-
-const execFileAsync = promisify(execFile);
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-type ImageMediaType = "image/jpeg" | "image/png" | "image/webp" | "image/gif";
-
-function getMediaType(filename: string): ImageMediaType {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  if (ext === "png") return "image/png";
-  if (ext === "webp") return "image/webp";
-  if (ext === "gif") return "image/gif";
-  return "image/jpeg";
-}
+const BACKEND_URL = process.env.BACKEND_URL;
 
 export async function POST(req: NextRequest) {
   const { instructions, instagramUrl } = await req.json();
@@ -44,138 +24,66 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "react-machine-"));
-  const audioPath = path.join(tmpDir, "audio.m4a");
-  const framePath = path.join(tmpDir, "frame.jpg");
-
   try {
-    // 1. Download video + thumbnail + metadata from Instagram
-    await execFileAsync(
-      "yt-dlp",
-      [
-        "--write-thumbnail",
-        "--write-info-json",
-        "--output",
-        path.join(tmpDir, "video.%(ext)s"),
-        "--no-playlist",
-        instagramUrl,
-      ],
-      { timeout: 60000 }
-    );
+    // 1. Call Python backend to process video (yt-dlp + ffmpeg + Whisper)
+    const backendRes = await fetch(`${BACKEND_URL}/api/process-video`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instagram_url: instagramUrl }),
+    });
 
-    const files = await fs.readdir(tmpDir);
-    const videoFile = files.find((f) => /\.(mp4|webm|mkv|mov)$/i.test(f));
-    const thumbnailFile = files.find((f) =>
-      /\.(jpg|jpeg|png|webp)$/i.test(f)
-    );
-    const infoFile = files.find((f) => f.endsWith(".info.json"));
-
-    if (!videoFile) {
+    if (!backendRes.ok) {
+      const err = await backendRes.json().catch(() => ({}));
       return NextResponse.json(
-        { error: "Não foi possível baixar o vídeo." },
+        { error: err.detail || "Erro ao processar o vídeo." },
         { status: 500 }
       );
     }
 
-    const videoPath = path.join(tmpDir, videoFile);
+    const { transcript, frameImage, thumbnailImage, videoStats } =
+      await backendRes.json();
 
-    // 2. Parse video metadata (likes, comments, date, description, etc.)
-    let videoStats: {
-      likes: number | null;
-      comments: number | null;
-      shares: number | null;
-      date: string | null;
-      description: string | null;
-    } = { likes: null, comments: null, shares: null, date: null, description: null };
-
-    if (infoFile) {
-      const infoRaw = await fs.readFile(path.join(tmpDir, infoFile), "utf-8");
-      const info = JSON.parse(infoRaw);
-      const rawDate = info.upload_date; // YYYYMMDD
-      videoStats = {
-        likes: info.like_count ?? null,
-        comments: info.comment_count ?? null,
-        shares: info.repost_count ?? info.share_count ?? null,
-        date: rawDate
-          ? `${rawDate.slice(6, 8)}/${rawDate.slice(4, 6)}/${rawDate.slice(0, 4)}`
-          : null,
-        description: info.description ?? null,
-      };
-    }
-
-    // 3. Extract audio from video with ffmpeg
-    await execFileAsync(
-      "ffmpeg",
-      ["-i", videoPath, "-vn", "-acodec", "aac", "-y", audioPath],
-      { timeout: 30000 }
-    );
-
-    // 4. Extract frame from ~1 second into the video
-    await execFileAsync(
-      "ffmpeg",
-      ["-i", videoPath, "-ss", "1", "-vframes", "1", "-y", framePath],
-      { timeout: 15000 }
-    );
-
-    // 5. Transcribe audio with OpenAI Whisper
-    const audioBuffer = await fs.readFile(audioPath);
-    const audioBlob = new File([audioBuffer], "audio.m4a", {
-      type: "audio/m4a",
-    });
-
-    const transcription = await openai.audio.transcriptions.create({
-      model: "whisper-1",
-      file: audioBlob,
-      language: "pt",
-    });
-
-    const transcript = transcription.text;
-
-    // 6. Prepare images for Claude Vision
+    // 2. Prepare images for Claude Vision
     const imageBlocks: Anthropic.ImageBlockParam[] = [];
 
-    if (thumbnailFile) {
-      const thumbBuffer = await fs.readFile(path.join(tmpDir, thumbnailFile));
-      imageBlocks.push({
-        type: "image",
-        source: {
-          type: "base64",
-          media_type: getMediaType(thumbnailFile),
-          data: thumbBuffer.toString("base64"),
-        },
-      });
-    }
-
-    let frameBase64: string | null = null;
-    try {
-      const frameBuffer = await fs.readFile(framePath);
-      frameBase64 = frameBuffer.toString("base64");
+    if (thumbnailImage) {
       imageBlocks.push({
         type: "image",
         source: {
           type: "base64",
           media_type: "image/jpeg",
-          data: frameBase64,
+          data: thumbnailImage,
         },
       });
-    } catch {
-      // Frame extraction may fail for very short videos
     }
 
-    // 7. Build visual context description
+    if (frameImage) {
+      imageBlocks.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: "image/jpeg",
+          data: frameImage,
+        },
+      });
+    }
+
+    // 3. Build visual context
     let visualContext = "";
     if (imageBlocks.length > 0) {
       const parts: string[] = [];
-      if (thumbnailFile)
+      if (thumbnailImage)
         parts.push("A primeira imagem é a CAPA/THUMBNAIL do vídeo original.");
-      if (frameBase64)
+      if (frameImage)
         parts.push(
           "A próxima imagem é um FRAME do início do vídeo original."
         );
       visualContext = `\nCONTEXTO VISUAL:\n${parts.map((p) => `- ${p}`).join("\n")}\nUse essas imagens para entender melhor o contexto visual do vídeo (cenário, pessoa, estilo, texto na tela, etc).\n`;
     }
 
-    // 8. Generate script with Claude + Vision
+    const description = videoStats?.description;
+
+    // 4. Generate script with Claude + Vision
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 2048,
@@ -193,7 +101,7 @@ ${instructions}
 
 TRANSCRIÇÃO DO VÍDEO ORIGINAL:
 ${transcript}
-${videoStats.description ? `\nDESCRIÇÃO DO VÍDEO ORIGINAL:\n${videoStats.description}\n` : ""}${visualContext}
+${description ? `\nDESCRIÇÃO DO VÍDEO ORIGINAL:\n${description}\n` : ""}${visualContext}
 TAREFA:
 Com base na transcrição acima, nas instruções do criador${imageBlocks.length > 0 ? " e no contexto visual" : ""}, escreva um roteiro completo de um vídeo de reação de 1 minuto e 30 segundos (aproximadamente 250-300 palavras faladas).
 
@@ -218,30 +126,16 @@ Escreva APENAS o roteiro, sem explicações adicionais.`,
     return NextResponse.json({
       script: scriptContent,
       transcript,
-      frameImage: frameBase64,
+      frameImage,
       videoStats,
     });
   } catch (err: unknown) {
     console.error("Error:", err);
-
     const errorMessage =
       err instanceof Error ? err.message : "Erro desconhecido";
-
-    if (errorMessage.includes("yt-dlp")) {
-      return NextResponse.json(
-        {
-          error:
-            "Erro ao baixar o vídeo. Verifique se o link está correto e se o yt-dlp está instalado.",
-        },
-        { status: 500 }
-      );
-    }
-
     return NextResponse.json(
       { error: `Erro ao processar: ${errorMessage}` },
       { status: 500 }
     );
-  } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
 }
