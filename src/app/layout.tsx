@@ -8,7 +8,7 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "Gerador de Roteiros — React Machine",
+  title: "React Machine",
   description: "Gere roteiros de vídeo reagindo a conteúdo do Instagram",
 };
 
