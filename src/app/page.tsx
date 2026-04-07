@@ -77,12 +77,14 @@ export default function Home() {
     if (!username) return;
     if (savedProfiles.includes(username)) {
       setProfileInput("");
+      loadProfilePosts(username);
       return;
     }
     const updated = [...savedProfiles, username];
     setSavedProfiles(updated);
     localStorage.setItem("react-machine-profiles", JSON.stringify(updated));
     setProfileInput("");
+    loadProfilePosts(username);
   }
 
   function removeProfile(username: string) {
@@ -95,13 +97,17 @@ export default function Home() {
     }
   }
 
-  async function loadProfilePosts(username: string) {
+  function toggleProfile(username: string) {
     if (activeProfile === username && profilePosts.length > 0) {
       setActiveProfile(null);
       setProfilePosts([]);
       setNextMaxId(null);
       return;
     }
+    loadProfilePosts(username);
+  }
+
+  async function loadProfilePosts(username: string) {
 
     setActiveProfile(username);
     setProfilePosts([]);
@@ -334,7 +340,7 @@ export default function Home() {
               {savedProfiles.map((username) => (
                 <div key={username} className="flex items-center gap-1">
                   <button
-                    onClick={() => loadProfilePosts(username)}
+                    onClick={() => toggleProfile(username)}
                     className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                       activeProfile === username
                         ? "bg-amber-500 text-black"
